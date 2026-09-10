@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import io
-import os
 import re
-from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 import pandas as pd
 
@@ -24,6 +23,41 @@ STATEMENT_ALIASES = {
     "total_debt": {"total debt", "debt", "borrowings", "total borrowings"},
     "total_equity": {"total equity", "shareholders equity", "stockholders equity", "net worth"},
     "interest_expense": {"interest expense", "finance cost", "interest costs"},
+}
+
+RATIO_DEFINITIONS = {
+    "current_ratio": ("current_assets", "current_liabilities", 1.0),
+    "debt_to_equity": ("total_debt", "total_equity", 1.0),
+    "debt_ratio": ("total_debt", "total_assets", 1.0),
+    "gross_margin_percent": ("gross_profit", "revenue", 100),
+    "operating_margin_percent": ("operating_income", "revenue", 100),
+    "net_margin_percent": ("net_income", "revenue", 100),
+    "dso_days": ("accounts_receivable", "revenue", 365),
+    "inventory_to_revenue": ("inventory", "revenue", 1.0),
+    "cfo_to_net_income": ("cash_from_operations", "net_income", 1.0),
+    "return_on_assets_percent": ("net_income", "total_assets", 100),
+    "return_on_equity_percent": ("net_income", "total_equity", 100),
+}
+
+RATIO_LABELS = {
+    "current_ratio": "current ratio",
+    "debt_to_equity": "debt to equity",
+    "debt_ratio": "debt ratio",
+    "gross_margin_percent": "gross margin",
+    "operating_margin_percent": "operating margin",
+    "net_margin_percent": "net margin",
+    "dso_days": "days sales outstanding",
+    "inventory_to_revenue": "inventory to revenue",
+    "cfo_to_net_income": "cash flow to net income",
+    "return_on_assets_percent": "return on assets",
+    "return_on_equity_percent": "return on equity",
+}
+
+RATIO_ALIASES = {
+    "dso_days": ("dso", "days sales outstanding", "receivables days"),
+    "cfo_to_net_income": ("cfo", "cash from operations", "cash flow to net income"),
+    "inventory_to_revenue": ("inventory to revenue", "inventory ratio"),
+    "debt_to_equity": ("debt to equity", "leverage"),
 }
 
 
@@ -136,7 +170,7 @@ def _fact_map(facts: list[Fact]) -> dict[tuple[str, str], Fact]:
     return {(fact.metric, fact.period): fact for fact in facts}
 
 
-def _ratio(name: str, numerator: str, denominator: str, facts: list[Fact], periods: list[str], scale: float = 1.0) -> list[dict[str, Any]]:
+def _ratio(numerator: str, denominator: str, facts: list[Fact], periods: list[str], scale: float = 1.0) -> list[dict[str, Any]]:
     lookup = _fact_map(facts)
     values = []
     for period in periods:
@@ -150,17 +184,8 @@ def compute_analysis(facts: list[Fact], company: str) -> AnalysisResult:
     periods = list(dict.fromkeys(fact.period for fact in facts))
     result = AnalysisResult(company, periods, facts)
     result.ratios = {
-        "current_ratio": _ratio("Current ratio", "current_assets", "current_liabilities", facts, periods),
-        "debt_to_equity": _ratio("Debt to equity", "total_debt", "total_equity", facts, periods),
-        "debt_ratio": _ratio("Debt ratio", "total_debt", "total_assets", facts, periods),
-        "gross_margin_percent": _ratio("Gross margin", "gross_profit", "revenue", facts, periods, 100),
-        "operating_margin_percent": _ratio("Operating margin", "operating_income", "revenue", facts, periods, 100),
-        "net_margin_percent": _ratio("Net margin", "net_income", "revenue", facts, periods, 100),
-        "dso_days": _ratio("Days sales outstanding", "accounts_receivable", "revenue", facts, periods, 365),
-        "inventory_to_revenue": _ratio("Inventory to revenue", "inventory", "revenue", facts, periods),
-        "cfo_to_net_income": _ratio("CFO to net income", "cash_from_operations", "net_income", facts, periods),
-        "return_on_assets_percent": _ratio("Return on assets", "net_income", "total_assets", facts, periods, 100),
-        "return_on_equity_percent": _ratio("Return on equity", "net_income", "total_equity", facts, periods, 100),
+        name: _ratio(numerator, denominator, facts, periods, scale)
+        for name, (numerator, denominator, scale) in RATIO_DEFINITIONS.items()
     }
     for name, points in result.ratios.items():
         if len(points) >= 2:
@@ -213,7 +238,7 @@ def build_narrative(result: AnalysisResult) -> str:
     if result.trends:
         notable = [trend for trend in result.trends if trend["metric"] in {"current_ratio", "debt_to_equity", "operating_margin_percent", "dso_days"}]
         if notable:
-            parts.append("Notable movements: " + "; ".join(f"{item['metric']} {item['direction']}" for item in notable) + ".")
+            parts.append("Notable movements: " + "; ".join(f"{RATIO_LABELS.get(item['metric'], item['metric'])} {item['direction']}" for item in notable) + ".")
     return " ".join(parts)
 
 
@@ -227,9 +252,98 @@ def answer_question(
     answerer: Callable[[AnalysisResult, str], dict[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     """Answer from uploaded facts, optionally through an injected provider."""
-    words = set(re.findall(r"[a-z0-9]+", question.lower()))
+    context_lower = question.lower()
+    question_lower = context_lower.rsplit("current question:", 1)[-1].strip()
+    normalized_question = question_lower.replace("-", " ")
+    words = set(re.findall(r"[a-z0-9]+", context_lower))
+    previous_user_questions = re.findall(r"user:\s*(.*?)(?=\nassistant:|\Z)", context_lower, flags=re.DOTALL)
+    previous_question = previous_user_questions[-1] if previous_user_questions else ""
+
+    def citations_for_points(points: list[dict[str, Any]]) -> list[str]:
+        return sum((point.get("citations", []) for point in points), [])
+
+    if any(term in question_lower for term in {"what periods", "which periods", "years covered", "periods covered"}):
+        return {"answer": f"The uploaded statements cover: {', '.join(result.periods)}.", "citations": [fact.citation() for fact in result.facts[:1]]}
+
+    if any(term in question_lower for term in {"overview", "main concerns", "overall analysis", "summarize"}):
+        answer = result.narrative
+        if result.red_flags:
+            answer += " Active concerns: " + "; ".join(f"{flag['name']} ({flag['severity']})" for flag in result.red_flags) + "."
+        return {"answer": answer, "citations": sum((flag["citations"] for flag in result.red_flags), [])}
+
+    requested_ratio = next(
+        (name for name, label in RATIO_LABELS.items() if label in normalized_question or any(alias in normalized_question for alias in RATIO_ALIASES.get(name, ()))),
+        None,
+    )
+    if requested_ratio is None and any(term in question_lower for term in {"trend", "changed", "change", "increased", "decreased", "improved", "declined", "over time"}):
+        requested_ratio = next(
+            (name for name, label in RATIO_LABELS.items() if label in context_lower or any(alias in context_lower for alias in RATIO_ALIASES.get(name, ()))),
+            None,
+        )
+    flag_intent = any(flag["name"].lower() in normalized_question for flag in result.red_flags) or any(
+        term in normalized_question for term in {"red flag", "red flags", "warning", "risk", "concern", "problem"}
+    )
+    if any(term in question_lower for term in {"all ratios", "available ratios", "what ratios", "which ratios", "all metrics", "available metrics", "which metrics are available", "what metrics are available"}):
+        available = [RATIO_LABELS[name] for name, points in result.ratios.items() if points]
+        return {"answer": "Available calculated metrics: " + ", ".join(available) + ".", "citations": citations_for_points([point for points in result.ratios.values() for point in points])}
+    if requested_ratio and not flag_intent:
+        points = result.ratios.get(requested_ratio, [])
+        if not points:
+            return {"answer": f"The uploaded statements do not contain enough data to calculate {RATIO_LABELS[requested_ratio]}.", "citations": []}
+        trend = next((item for item in result.trends if item["metric"] == requested_ratio), None)
+        asks_trend = any(term in question_lower for term in {"trend", "changed", "change", "increased", "decreased", "improved", "declined", "over time"})
+        if asks_trend and trend:
+            answer = f"{RATIO_LABELS[requested_ratio].title()} {trend['direction']} from {trend['from']['value']:g} in {trend['from']['period']} to {trend['to']['value']:g} in {trend['to']['period']} (change: {trend['delta']:g})."
+            return {"answer": answer, "citations": citations_for_points([trend["from"], trend["to"]])}
+        if any(term in question_lower for term in {"latest", "current", "today"}):
+            points = points[-1:]
+        answer = "; ".join(f"{RATIO_LABELS[requested_ratio].title()} was {point['value']:g} in {point['period']}" for point in points) + "."
+        return {"answer": answer, "citations": citations_for_points(points)}
+
+    mentioned_flag = any(flag["name"].lower() in question_lower for flag in result.red_flags)
+    if mentioned_flag or any(term in question_lower for term in {"red flag", "red flags", "warning", "risk", "concern", "problem"}):
+        matching_flags = [flag for flag in result.red_flags if flag["name"].lower() in question_lower]
+        if not matching_flags:
+            flag_terms = {
+                "accrual": "Accrual-quality gap",
+                "cash conversion": "Accrual-quality gap",
+                "dso": "DSO climbing",
+                "receivable": "DSO climbing",
+                "margin": "Margin compression",
+                "leverage": "Leverage stress",
+                "debt": "Leverage stress",
+                "inventory": "Inventory build-up",
+                "liquidity": "Liquidity deterioration",
+                "current ratio": "Liquidity deterioration",
+            }
+            matching_names = {name for term, name in flag_terms.items() if term in question_lower}
+            matching_flags = [flag for flag in result.red_flags if flag["name"] in matching_names]
+        if matching_flags:
+            answer = " ".join(f"{flag['name']} ({flag['severity']}): {flag['message']}" for flag in matching_flags)
+            return {"answer": answer, "citations": sum((flag["citations"] for flag in matching_flags), [])}
+        if result.red_flags:
+            answer = "Active red flags: " + "; ".join(f"{flag['name']} ({flag['severity']})" for flag in result.red_flags) + "."
+            return {"answer": answer, "citations": sum((flag["citations"] for flag in result.red_flags), [])}
+        return {"answer": "No configured red-flag rule fired for the available data.", "citations": []}
+
     candidates = sorted(result.facts, key=lambda fact: len(words & set(fact.metric.replace("_", " ").split())), reverse=True)
     candidates = [fact for fact in candidates if words & set(fact.metric.replace("_", " ").split()) or any(term in question.lower() for term in fact.metric.split("_"))][:6]
+
+    if any(term in question.lower() for term in {"difference", "differ", "change", "increase", "decrease"}) and candidates:
+        metric = candidates[0].metric
+        metric_facts = [fact for fact in result.facts if fact.metric == metric]
+        period_text = previous_question if "between them" in question_lower else context_lower
+        requested_periods = [period for period in result.periods if period.lower() in period_text]
+        selected = [fact for fact in metric_facts if fact.period in requested_periods]
+        if len(selected) < 2:
+            selected = metric_facts[-2:]
+        if len(selected) >= 2:
+            first, last = selected[0], selected[-1]
+            difference = last.value - first.value
+            return {
+                "answer": f"The difference in {metric.replace('_', ' ')} between {first.period} and {last.period} was {difference:g} ({first.value:g} to {last.value:g}).",
+                "citations": [first.citation(), last.citation()],
+            }
 
     if answerer:
         try:

@@ -1,14 +1,14 @@
-Metric,2022,2023,2024
-Revenue,1000,1100,1200
-Gross Profit,420,440,450
-Operating Income,160,150,132
-Net Income,110,105,95
-Cash From Operations,105,85,60
-Accounts Receivable,100,130,180
-Inventory,120,150,210
-Current Assets,600,560,500
-Current Liabilities,500,540,600
-Total Assets,1800,1900,2100
-Total Debt,600,760,1300
-Total Equity,1000,950,900
-Interest Expense,30,38,60
+Metric,2019,2020,2021,2022,2023,2024
+Revenue,720,790,900,1000,1100,1200
+Gross Profit,310,342,387,420,440,450
+Operating Income,112,124,144,160,150,132
+Net Income,74,82,96,110,105,95
+Cash From Operations,78,88,101,105,85,60
+Accounts Receivable,58,65,78,100,130,180
+Inventory,70,82,96,120,150,210
+Current Assets,430,470,540,600,560,500
+Current Liabilities,360,385,430,500,540,600
+Total Assets,1120,1250,1480,1800,1900,2100
+Total Debt,360,400,480,600,760,1300
+Total Equity,620,700,820,1000,950,900
+Interest Expense,18,20,24,30,38,60
