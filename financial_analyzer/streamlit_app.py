@@ -106,7 +106,7 @@ with st.sidebar:
     st.header("Statement workspace")
     st.caption("Upload one statement to create an analysis session.")
     company = st.text_input("Company name", "My Company")
-    uploaded = st.file_uploader("CSV, Excel, or PDF", type=["csv", "xlsx", "xls", "pdf"])
+    uploaded = st.file_uploader("CSV, Excel, PDF, or text report", type=["csv", "xlsx", "xls", "pdf", "txt", "md"])
     if uploaded and st.button("Analyze statements", type="primary"):
         try:
             st.session_state.result = analyze_via_api(uploaded.getvalue(), uploaded.name, company)

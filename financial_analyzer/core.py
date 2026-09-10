@@ -83,6 +83,8 @@ class AnalysisResult:
     trends: list[dict[str, Any]] = field(default_factory=list)
     red_flags: list[dict[str, Any]] = field(default_factory=list)
     narrative: str = ""
+    source_text: str = ""
+    source_name: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -139,7 +141,25 @@ def _read_table(data: bytes, filename: str) -> pd.DataFrame:
     return pd.read_csv(io.BytesIO(data))
 
 
+def _parse_text_facts(data: bytes, filename: str, company: str) -> list[Fact]:
+    """Extract simple metric sentences from an unstructured text report."""
+    text = data.decode("utf-8-sig")
+    facts: list[Fact] = []
+    for metric, aliases in STATEMENT_ALIASES.items():
+        labels = sorted(aliases, key=len, reverse=True)
+        label_pattern = "|".join(re.escape(label) for label in labels)
+        pattern = rf"\b(?:{label_pattern})\b\s+(?:was|were|of|reached|stood at|reported)\s+[$€£]?([\d,]+(?:\.\d+)?)\s*(?:million|m)?\s+in\s+(20\d{{2}})\b"
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            facts.append(Fact(company, metric, match.group(2), float(match.group(1).replace(",", "")), "Financial report", filename))
+    if not facts:
+        raise ValueError("No supported financial metrics were found in the text report.")
+    return facts
+
+
 def parse_facts(data: bytes, filename: str, company: str) -> list[Fact]:
+    suffix = filename.lower().rsplit(".", 1)[-1]
+    if suffix in {"txt", "md"}:
+        return _parse_text_facts(data, filename, company)
     frame = _read_table(data, filename).dropna(how="all")
     if frame.shape[1] < 2:
         raise ValueError("The statement needs a metric column and at least one period column.")
@@ -243,7 +263,11 @@ def build_narrative(result: AnalysisResult) -> str:
 
 
 def analyze_upload(data: bytes, filename: str, company: str) -> AnalysisResult:
-    return compute_analysis(parse_facts(data, filename, company), company)
+    result = compute_analysis(parse_facts(data, filename, company), company)
+    if filename.lower().endswith((".txt", ".md")):
+        result.source_text = data.decode("utf-8-sig")
+        result.source_name = filename
+    return result
 
 
 def answer_question(

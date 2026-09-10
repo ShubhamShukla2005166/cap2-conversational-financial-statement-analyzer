@@ -1,8 +1,8 @@
 Conversational Financial Statement Analyzer
 ============================================
 
-This capstone analyzes uploaded CSV, Excel, and tabular PDF financial
-statements. It calculates financial ratios, period trends, and six red flags:
+This capstone analyzes uploaded CSV, Excel, tabular PDF, TXT, and Markdown
+financial reports. It calculates financial ratios, period trends, and six red flags:
 
 - Accrual-quality gap
 - DSO climbing
@@ -46,6 +46,10 @@ From the project root:
 Upload sample_financial_statement.csv to exercise the analyzer. Enter a
 company name such as Sample Company.
 
+For the unstructured-document demo, upload:
+
+	data\large_unstructured_financial_report.txt
+
 If port 8501 is already occupied, use:
 
 	streamlit run financial_analyzer\streamlit_app.py --server.port 8502
@@ -68,4 +72,5 @@ Documentation
 
 - CAPSTONE_README.md: project overview and setup notes.
 - FINANCIAL_ANALYZER_CODE_WALKTHROUGH.md: detailed file-by-file code flow.
-- sample_financial_statement.csv: ready-to-upload demonstration data.
+- sample_financial_statement.csv: ready-to-upload tabular demonstration data.
+- large_unstructured_financial_report.txt: long narrative report for text extraction, chunking, and embedding retrieval.

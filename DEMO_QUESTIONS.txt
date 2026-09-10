@@ -1,7 +1,8 @@
 Conversational Financial Statement Analyzer - Demo Questions
 ============================================================
 
-Upload: data/sample_financial_statement.csv
+Tabular upload: data/sample_financial_statement.csv
+Unstructured upload: data/large_unstructured_financial_report.txt
 
 Use these short questions for a focused demo.
 
