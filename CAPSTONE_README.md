@@ -2,7 +2,7 @@
 
 Owner: **Shubham Shukla** (Trend & Red Flag Agent)
 
-This project turns a CSV, Excel, or tabular PDF financial statement into a grounded analysis. It computes liquidity, leverage, profitability, cash-conversion, DSO, and inventory ratios; checks the six assignment red-flag patterns; and attaches a source citation to every returned figure.
+This project turns a CSV, Excel, tabular PDF, TXT, or Markdown financial report into a grounded analysis. It computes liquidity, leverage, profitability, cash-conversion, DSO, and inventory ratios; checks the six assignment red-flag patterns; and attaches a source citation to every returned figure.
 
 ## Project structure
 

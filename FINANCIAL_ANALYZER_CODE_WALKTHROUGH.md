@@ -87,7 +87,7 @@ This is the shared embedding and FAISS integration layer. It follows the pattern
 
 It is deliberately separate from `core.py`. Future agents can create or load the same vector store without importing Streamlit, FastAPI, or the financial calculation code.
 
-The current Streamlit analysis path does not automatically create embeddings. The module is an integration boundary for the future retrieval and agent workflow.
+When OpenAI is configured, the Q&A path creates searchable documents from uploaded facts, builds an in-memory FAISS index for the analysis session, and retrieves the most relevant facts before calling the language model. Deterministic financial calculations do not require embeddings.
 
 ### `financial_analyzer/llm.py`
 
@@ -954,6 +954,26 @@ This calls `FAISS.from_documents` with:
 - Optional stable document IDs
 - The shared relevance function
 - Shared normalized-distance settings
+
+### `build_fact_documents` and chunking
+
+Financial facts are already small, so each fact normally remains one document:
+
+```text
+revenue | 2024 | 1200
+```
+
+The embedding pipeline still uses `RecursiveCharacterTextSplitter` for longer
+documents. Its settings are:
+
+```python
+CHUNK_SIZE = 500
+CHUNK_OVERLAP = 50
+```
+
+This keeps short financial facts intact while allowing longer extracted text
+to be split into overlapping chunks. Citation metadata is copied to every
+chunk so retrieved answers can still show their sources.
 
 ### `save_vector_store`
 

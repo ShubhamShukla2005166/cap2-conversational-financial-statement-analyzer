@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from typing import Any
+
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .core import AnalysisResult, analyze_upload, answer_question, compare_results
 from .llm import answer_with_openai
@@ -13,11 +15,20 @@ SESSIONS: dict[str, AnalysisResult] = {}
 class QuestionRequest(BaseModel):
     session_id: str
     question: str
+    history: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class CompareRequest(BaseModel):
     left_session_id: str
     right_session_id: str
+
+
+def _conversation_text(history: list[dict[str, Any]]) -> str:
+    return "\n".join(
+        f"{message.get('role', 'user')}: {message['text']}"
+        for message in history
+        if message.get("text")
+    )
 
 
 @app.post("/analyze")
@@ -35,7 +46,9 @@ def ask(payload: QuestionRequest):
     result = SESSIONS.get(payload.session_id)
     if not result:
         raise HTTPException(status_code=404, detail="Analysis session not found.")
-    return answer_question(result, payload.question, answerer=answer_with_openai)
+    context = _conversation_text(payload.history)
+    question = f"Conversation context:\n{context}\n\nCurrent question: {payload.question}" if context else payload.question
+    return answer_question(result, question, answerer=answer_with_openai)
 
 
 @app.post("/compare")
@@ -45,12 +58,6 @@ def compare(payload: CompareRequest):
     if not left or not right:
         raise HTTPException(status_code=404, detail="Both analysis sessions are required.")
     return compare_results(left, right)
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
 
 if __name__ == "__main__":
     import uvicorn
